@@ -1,0 +1,8 @@
+.sendsig.*
+.tmp_versions/*
+Module.*
+modules.*
+sendsig.ko
+sendsig.mod.c
+sendsig.mod.o
+sendsig.o
