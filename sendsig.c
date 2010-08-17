@@ -36,21 +36,33 @@
 #define MOD_AUTHOR "Domenico Delle Side <domenico.delleside@alcacoop.it>"
 #define MOD_DESC "Small kernel module to check a process' cpu usage and kill it if too high"
 
+/* safe defaults for the module params */
 #define SIG_TO_SEND 9
 #define MAX_CPU_SHARE 90
 #define WAIT_TIMEOUT 10
-#define MAX_CHECK 6 /* This means that if the process has cpu share
-		       higher than MAX_CPU_SHARE for more than
-		       MAX_CHECK * WAIT_TIMEOUT seconds, it will be
-		       killed
-		    */
+#define MAX_CHECKS 6 
+
+static int sig_to_send = SIG_TO_SEND;
+static ushort max_cpu_share = MAX_CPU_SHARE;
+static ushort wait_timeout = WAIT_TIMEOUT;
+static ushort max_checks = MAX_CHECKS;
+
+module_param(sig_to_send, int, 0000);
+MODULE_PARM_DESC(sig_to_send, " The signal code you want to send (default: SIGKILL, 9)");
+module_param(max_cpu_share, ushort, 0000);
+MODULE_PARM_DESC(max_cpu_share, " The maximum cpu share admissible for the process, a value between 0 and 100 (default: 90)");
+module_param(wait_timeout, ushort, 0000);
+MODULE_PARM_DESC(wait_timeout, " The number of seconds to wait between each check (default: 10)");
+module_param(max_checks, ushort, 0000);
+MODULE_PARM_DESC(max_checks, " The number of checks after which the signal is sent (default: 6)");
+
 
 struct timer_list check_timer;
 struct task_struct *check_task;
 struct dentry *file;
 pid_t pid;
 cputime_t last_cputime;
-int count_check;
+ushort count_check;
 
 /* 
    This function is not exported to modules by the kernel, so let's
@@ -90,11 +102,11 @@ out:
 }
 
 
-static int thread_group_cpu_share(struct task_struct *task) 
+static ushort thread_group_cpu_share(struct task_struct *task) 
 {
   struct task_cputime times;
   cputime_t num_load, div_load, total_time;
-  int share;
+  ushort share;
 
   my_thread_group_cputime(task, &times);  
   total_time = cputime_add(times.utime, times.stime);
@@ -112,8 +124,8 @@ static int thread_group_cpu_share(struct task_struct *task)
       seconds
     */
     num_load = cputime_sub(total_time, last_cputime) * 100;
-    div_load = jiffies_to_cputime(WAIT_TIMEOUT * HZ);
-    share = (int)cputime_div(num_load, div_load);
+    div_load = jiffies_to_cputime(wait_timeout * HZ);
+    share = (ushort)cputime_div(num_load, div_load);
     
     printk(KERN_DEBUG "sendsig: computed cpu share for process %d: %d\n", 
 	   pid, share);
@@ -152,24 +164,28 @@ static struct task_struct *get_check_task(pid_t pid)
 static void timer_function(unsigned long par)
 { 
   struct siginfo info;
-  int cpu_share = thread_group_cpu_share(check_task);
+  ushort cpu_share = thread_group_cpu_share(check_task);
 
-  if ( cpu_share >= MAX_CPU_SHARE ) {
+  if ( cpu_share >= max_cpu_share ) {
     count_check++;
     printk(KERN_INFO "sendsig: current cpu share over limit of %i (check #%i)\n", 
-	   MAX_CPU_SHARE, count_check);
-    
-    if (count_check >= MAX_CHECK) {
+	   max_cpu_share, count_check);
+
+/* the ratio is: if the process has a cpu share higher than
+   max_cpu_share for more than max_checks * wait_timeout seconds, then
+   we'll send the signal sig_to_send to it
+ */    
+    if (count_check >= max_checks) {
       /*
 	initialize the signal structure
       */
       memset(&info, 0, sizeof(struct siginfo));
-      info.si_signo = SIG_TO_SEND;
+      info.si_signo = sig_to_send;
       info.si_code = SI_KERNEL;
       /*
 	send the signal to the process
       */
-      send_sig_info(SIG_TO_SEND, &info, check_task);
+      send_sig_info(sig_to_send, &info, check_task);
       /*
 	remove the timer
        */
@@ -186,7 +202,7 @@ static void timer_function(unsigned long par)
   /*
     update the timer
   */
-  mod_timer(&check_timer, jiffies + WAIT_TIMEOUT * HZ); 
+  mod_timer(&check_timer, jiffies + wait_timeout * HZ); 
 
   return;
 }
@@ -204,7 +220,7 @@ static ssize_t write_pid(struct file *file, const char __user *buf,
   sscanf(mybuf, "%d", &pid);
 
   printk(KERN_INFO "sendsig: got pid = %d. Checking it every %i seconds, after timer initialization\n", 
-	 pid, WAIT_TIMEOUT);
+	 pid, wait_timeout);
   /*
      get the task struct to check
   */
@@ -232,7 +248,7 @@ static ssize_t write_pid(struct file *file, const char __user *buf,
   */
   init_timer(&check_timer);
   check_timer.function = timer_function;
-  check_timer.expires = jiffies + WAIT_TIMEOUT*HZ;
+  check_timer.expires = jiffies + wait_timeout*HZ;
   add_timer(&check_timer);
   	
   return count;
