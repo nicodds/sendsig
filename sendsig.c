@@ -22,6 +22,7 @@
 
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <linux/init.h>
 #include <asm/siginfo.h>
 #include <linux/rcupdate.h>
@@ -72,9 +73,10 @@ ushort count_check;
 
 void my_thread_group_cputime(struct task_struct *tsk, struct task_cputime *times)
 {
-	struct sighand_struct *sighand;
-	struct signal_struct *sig;
+        struct signal_struct *sig;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,28)
 	struct task_struct *t;
+	struct sighand_struct *sighand;
 
 	*times = INIT_CPUTIME;
 
@@ -99,6 +101,26 @@ void my_thread_group_cputime(struct task_struct *tsk, struct task_cputime *times
 	times->sum_exec_runtime += sig->sum_sched_runtime;
 out:
 	rcu_read_unlock();
+#else
+	int i;
+	struct task_cputime *tot;
+
+	sig = tsk->signal;
+	if (unlikely(!sig) || !sig->cputime.totals) {
+		times->utime = tsk->utime;
+		times->stime = tsk->stime;
+		times->sum_exec_runtime = tsk->se.sum_exec_runtime;
+		return;
+	}
+	times->stime = times->utime = cputime_zero;
+	times->sum_exec_runtime = 0;
+	for_each_possible_cpu(i) {
+		tot = per_cpu_ptr(tsk->signal->cputime.totals, i);
+		times->utime = cputime_add(times->utime, tot->utime);
+		times->stime = cputime_add(times->stime, tot->stime);
+		times->sum_exec_runtime += tot->sum_exec_runtime;
+	}
+#endif
 }
 
 
