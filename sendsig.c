@@ -148,7 +148,6 @@ static struct task_struct *get_check_task(pid_t pid)
 
   struct_pid = find_get_pid(pid);
   task = pid_task(struct_pid, PIDTYPE_PID);
-  //put_pid(struct_pid);
 
   rcu_read_unlock();
 
@@ -160,10 +159,25 @@ static struct task_struct *get_check_task(pid_t pid)
   return task;
 }
 
+void signal_send(struct task_struct *task)
+{
+    struct siginfo info;
+
+  /*
+    initialize the signal structure
+  */
+  memset(&info, 0, sizeof(struct siginfo));
+  info.si_signo = sig_to_send;
+  info.si_code = SI_KERNEL;
+  /*
+    send the signal to the process
+  */
+  send_sig_info(sig_to_send, &info, task);
+}
+
 
 static void timer_function(unsigned long par)
 { 
-  struct siginfo info;
   ushort cpu_share = thread_group_cpu_share(check_task);
 
   if ( cpu_share >= max_cpu_share ) {
@@ -177,18 +191,12 @@ static void timer_function(unsigned long par)
  */    
     if (count_check >= max_checks) {
       /*
-	initialize the signal structure
+	sending the signal to the process
       */
-      memset(&info, 0, sizeof(struct siginfo));
-      info.si_signo = sig_to_send;
-      info.si_code = SI_KERNEL;
-      /*
-	send the signal to the process
-      */
-      send_sig_info(sig_to_send, &info, check_task);
+      signal_send(check_task);
       /*
 	remove the timer
-       */
+      */ 
       del_timer(&check_timer);
       printk(KERN_INFO "sendsig: sent signal to process %i, timer removed\n", pid);
       return;
