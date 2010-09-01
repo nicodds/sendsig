@@ -202,6 +202,12 @@ static void timer_function(unsigned long par)
 { 
   ushort cpu_share = thread_group_cpu_share(check_task);
 
+  if (unlikely(!pid_alive(check_task))) {
+    del_timer(&check_timer);
+    printk(KERN_INFO "sendsig: cannot find pid %i. Is the process still active? Timer removed\n", pid);
+    return;
+  }
+
   if ( cpu_share >= max_cpu_share ) {
     count_check++;
     printk(KERN_INFO "sendsig: current cpu share over limit of %i (check #%i)\n", 
