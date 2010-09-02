@@ -1,5 +1,5 @@
 * get feedback from people smarter than me
 * check module against other kernel versions (currently tested only
-   2.6.32)
+   on 2.6.{28,32,35})
 * support for multiple process check
 * write an userspace tool to interact with the module
