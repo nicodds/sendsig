@@ -57,13 +57,12 @@ MODULE_PARM_DESC(wait_timeout, " The number of seconds to wait between each chec
 module_param(max_checks, ushort, 0000);
 MODULE_PARM_DESC(max_checks, " The number of checks after which the signal is sent (default: 6)");
 
-
-struct timer_list check_timer;
-struct task_struct *check_task;
-struct dentry *file;
-pid_t pid;
-cputime_t last_cputime;
-ushort count_check;
+static struct timer_list check_timer;
+static struct task_struct *check_task;
+static struct dentry *file;
+static pid_t pid;
+static cputime_t last_cputime;
+static ushort count_check;
 
 /* 
    This function is not exported to modules by the kernel, so let's
@@ -200,7 +199,7 @@ void signal_send(struct task_struct *task)
 
 static void timer_function(unsigned long par)
 { 
-  ushort cpu_share = thread_group_cpu_share(check_task);
+  ushort cpu_share; 
 
   if (unlikely(!pid_alive(check_task))) {
     del_timer(&check_timer);
@@ -208,7 +207,9 @@ static void timer_function(unsigned long par)
     return;
   }
 
-  if ( cpu_share >= max_cpu_share ) {
+  cpu_share = thread_group_cpu_share(check_task);
+
+  if (cpu_share >= max_cpu_share) {
     count_check++;
     printk(KERN_INFO "sendsig: current cpu share over limit of %i (check #%i)\n", 
 	   max_cpu_share, count_check);
