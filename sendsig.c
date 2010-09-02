@@ -253,6 +253,14 @@ static ssize_t write_pid(struct file *file, const char __user *buf,
   if(unlikely(count > 10))
     return -EINVAL;
 
+  /* 
+     let's see if a timer already exists. 
+  */
+  if (unlikely(check_timer.expires)) {
+    del_timer(&check_timer); /*... delete it */
+    printk(KERN_DEBUG "sendsig: initialization removed previous timer active on pid %i\n", pid);
+  }
+
   copy_from_user(mybuf, buf, count);
   sscanf(mybuf, "%d", &pid);
 
@@ -275,11 +283,6 @@ static ssize_t write_pid(struct file *file, const char __user *buf,
     update to zero the value of the check counter
   */
   count_check = 0;
-  /* 
-     let's see if a timer already exists. 
-  */
-  if (unlikely(check_timer.expires))
-    del_timer(&check_timer); /*... delete it */
   /* 
      install the new timer
   */
